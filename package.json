@@ -1,0 +1,19 @@
+{
+  "name": "demoapp-nextjs-mysql",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@types/node": "22.15.30",
+    "mysql2": "3.14.1",
+    "next": "15.3.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "typescript": "5.8.3"
+  },
+  "devDependencies": {}
+}
