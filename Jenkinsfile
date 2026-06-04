@@ -5,7 +5,7 @@ pipeline {
     // Estos valores son los defaults; se cambian una vez al crear el job.
     parameters {
         string(name: 'PORTAINER_URL',
-               defaultValue: 'https://portainer.tudominio.com',
+               defaultValue: 'https://devportainer.viladomat.com/',
                description: 'URL base de Portainer, sin barra al final')
 
         string(name: 'PORTAINER_ENDPOINT_ID',
@@ -25,15 +25,15 @@ pipeline {
                description: 'Nombre:tag de la imagen Docker a construir')
 
         string(name: 'APP_HOSTNAME',
-               defaultValue: 'app.tudominio.com',
+               defaultValue: 'demoapp1',
                description: 'Hostname que Traefik usará para servir la app')
 
         string(name: 'DB_HOST',
-               defaultValue: '',
+               defaultValue: '10.42.81.5',
                description: 'Host del servidor de base de datos')
 
         string(name: 'DB_NAME',
-               defaultValue: 'democode1db',
+               defaultValue: 'demodb',
                description: 'Nombre de la base de datos')
     }
 
