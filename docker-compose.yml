@@ -26,7 +26,7 @@ services:
         - "traefik.http.routers.democode1.tls=true"
         - "traefik.http.routers.democode1.tls.certresolver=letsencrypt"
         - "traefik.http.services.democode1.loadbalancer.server.port=3000"
-        - "traefik.docker.network=web"
+        - "traefik.docker.network=public"
 
 networks:
   public:
