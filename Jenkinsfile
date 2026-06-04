@@ -36,8 +36,8 @@ pipeline {
     }
 
     // Credenciales en Jenkins → Manage Jenkins → Credentials:
-    //   • ID: portainer-admin   → usuario y contraseña de Portainer
-    //   • ID: demoapp-dbcreds   → usuario y contraseña de la base de datos
+    //   • ID: portainer-admin    → usuario y contraseña de Portainer
+    //   • ID: demoapp-dbcreds    → usuario y contraseña de la base de datos
 
     stages {
 
@@ -121,61 +121,60 @@ pipeline {
             }
         }
 
-    }
+        stage('4 · Desplegar stack') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'demoapp-dbcreds',
+                    usernameVariable: 'DB_USER',
+                    passwordVariable: 'DB_PASS'
+                )]) {
+                    script {
+                        def swarmResp = httpRequest(
+                            httpMode:           'GET',
+                            ignoreSslErrors:    true,
+                            url:                "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/swarm",
+                            customHeaders:      [[name: 'Authorization', value: env.JWT]],
+                            validResponseCodes: '200'
+                        )
+                        def swarmId = new groovy.json.JsonSlurper().parseText(swarmResp.content).ID
+                        echo "Swarm ID: ${swarmId}"
 
-    stage('4 · Desplegar stack') {
-        steps {
-            withCredentials([usernamePassword(
-                credentialsId: 'demoapp-dbcreds',
-                usernameVariable: 'DB_USER',
-                passwordVariable: 'DB_PASS'
-            )]) {
-                script {
-                    def swarmResp = httpRequest(
-                        httpMode:           'GET',
-                        ignoreSslErrors:    true,
-                        url:                "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/swarm",
-                        customHeaders:      [[name: 'Authorization', value: env.JWT]],
-                        validResponseCodes: '200'
-                    )
-                    def swarmId = new groovy.json.JsonSlurper().parseText(swarmResp.content).ID
-                    echo "Swarm ID: ${swarmId}"
-    
-                    // Leemos el docker-compose.yml del workspace (ya clonado por Jenkins)
-                    // y escapamos las comillas para meterlo en el JSON
-                    def composeContent = readFile('docker-compose.yml')
-                                            .replace('\\', '\\\\')
-                                            .replace('"', '\\"')
-                                            .replace('\n', '\\n')
-                                            .replace('\r', '')
-    
-                    def body = """
-                    {
-                      "Name": "${params.STACK_NAME}",
-                      "SwarmID": "${swarmId}",
-                      "StackFileContent": "${composeContent}",
-                      "Env": [
-                        {"name": "APP_HOSTNAME",  "value": "${params.APP_HOSTNAME}"},
-                        {"name": "DB_HOST",       "value": "${params.DB_HOST}"},
-                        {"name": "DB_USER",       "value": "${DB_USER}"},
-                        {"name": "DB_PASSWORD",   "value": "${DB_PASS}"},
-                        {"name": "DB_NAME",       "value": "${params.DB_NAME}"}
-                      ]
+                        // Leemos el docker-compose.yml del workspace (ya clonado por Jenkins)
+                        // y escapamos las comillas para meterlo en el JSON
+                        def composeContent = readFile('docker-compose.yml')
+                                                .replace('\\', '\\\\')
+                                                .replace('"', '\\"')
+                                                .replace('\n', '\\n')
+                                                .replace('\r', '')
+
+                        def body = """
+                        {
+                          "Name": "${params.STACK_NAME}",
+                          "SwarmID": "${swarmId}",
+                          "StackFileContent": "${composeContent}",
+                          "Env": [
+                            {"name": "APP_HOSTNAME",  "value": "${params.APP_HOSTNAME}"},
+                            {"name": "DB_HOST",       "value": "${params.DB_HOST}"},
+                            {"name": "DB_USER",       "value": "${DB_USER}"},
+                            {"name": "DB_PASSWORD",   "value": "${DB_PASS}"},
+                            {"name": "DB_NAME",       "value": "${params.DB_NAME}"}
+                          ]
+                        }
+                        """
+
+                        echo "Desplegando stack '${params.STACK_NAME}'..."
+                        httpRequest(
+                            acceptType:             'APPLICATION_JSON',
+                            contentType:            'APPLICATION_JSON',
+                            httpMode:               'POST',
+                            ignoreSslErrors:        true,
+                            url:                    "${params.PORTAINER_URL}/api/stacks/create/swarm/string?endpointId=${params.PORTAINER_ENDPOINT_ID}",
+                            customHeaders:          [[name: 'Authorization', value: env.JWT]],
+                            requestBody:            body,
+                            validResponseCodes:     '200:201',
+                            consoleLogResponseBody: true
+                        )
                     }
-                    """
-    
-                    echo "Desplegando stack '${params.STACK_NAME}'..."
-                    httpRequest(
-                        acceptType:             'APPLICATION_JSON',
-                        contentType:            'APPLICATION_JSON',
-                        httpMode:               'POST',
-                        ignoreSslErrors:        true,
-                        url:                    "${params.PORTAINER_URL}/api/stacks/create/swarm/string?endpointId=${params.PORTAINER_ENDPOINT_ID}",
-                        customHeaders:          [[name: 'Authorization', value: env.JWT]],
-                        requestBody:            body,
-                        validResponseCodes:     '200:201',
-                        consoleLogResponseBody: true
-                    )
                 }
             }
         }
