@@ -57,7 +57,8 @@ pipeline {
                             url:             "${params.PORTAINER_URL}/api/auth",
                             requestBody:     """{"Username":"${P_USER}","Password":"${P_PASS}"}"""
                         )
-                        def json = new groovy.json.JsonSlurper().parseText(resp.content)
+                        // JsonSlurperClassic devuelve HashMap serializable (no LazyMap)
+                        def json = new groovy.json.JsonSlurperClassic().parseText(resp.content)
                         env.JWT = "Bearer ${json.jwt}"
                         echo "Token obtenido correctamente"
                     }
@@ -77,14 +78,24 @@ pipeline {
 
                     def buildUrl = "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/build?t=${params.IMAGE_NAME}&nocache=1"
 
-                    sh """
-                        curl -sf -X POST \
-                          -H 'Content-Type: application/x-tar' \
-                          -H 'Authorization: ${env.JWT}' \
-                          --data-binary @/tmp/build-context.tar.gz \
-                          --insecure \
-                          '${buildUrl}'
-                    """
+                    def buildOutput = sh(
+                        script: """
+                            curl -s -X POST \
+                              -H 'Content-Type: application/x-tar' \
+                              -H 'Authorization: ${env.JWT}' \
+                              --data-binary @/tmp/build-context.tar.gz \
+                              --insecure \
+                              '${buildUrl}'
+                        """,
+                        returnStdout: true
+                    ).trim()
+
+                    echo "=== Build output ==="
+                    echo buildOutput
+
+                    if (buildOutput.contains('"error"')) {
+                        error("El build de Docker ha fallado. Revisa el output de arriba.")
+                    }
                     echo "Imagen ${params.IMAGE_NAME} construida correctamente"
                 }
             }
@@ -101,9 +112,8 @@ pipeline {
                         validResponseCodes: '200'
                     )
 
-                    // Extraemos el ID como String primitivo ANTES del if
-                    // para que sleep() no intente serializar el LazyMap de Groovy
-                    def stacks  = new groovy.json.JsonSlurper().parseText(resp.content)
+                    // JsonSlurperClassic → ArrayList/HashMap serializables, sin LazyMap
+                    def stacks  = new groovy.json.JsonSlurperClassic().parseText(resp.content)
                     def stackId = null
                     for (def stack : stacks) {
                         if (stack.Name == params.STACK_NAME) {
@@ -145,8 +155,8 @@ pipeline {
                             customHeaders:      [[name: 'Authorization', value: env.JWT]],
                             validResponseCodes: '200'
                         )
-                        // .toString() evita que swarmId sea un LazyMap no serializable
-                        def swarmId = new groovy.json.JsonSlurper().parseText(swarmResp.content).ID.toString()
+                        // .toString() garantiza String primitivo serializable
+                        def swarmId = new groovy.json.JsonSlurperClassic().parseText(swarmResp.content).ID.toString()
                         echo "Swarm ID: ${swarmId}"
 
                         def composeContent = readFile('docker-compose.yml')
