@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  democode1:
+    image: democode1:latest
+    environment:
+      - DB_HOST=${DB_HOST}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME}
+    networks:
+      - public
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.hostname == vil-devswarm01
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.democode1.rule=Host(`${APP_HOSTNAME}`)"
+        - "traefik.http.routers.democode1.entrypoints=websecure"
+        - "traefik.http.routers.democode1.tls=true"
+        - "traefik.http.routers.democode1.tls.certresolver=letsencrypt"
+        - "traefik.http.services.democode1.loadbalancer.server.port=3000"
+        - "traefik.docker.network=web"
+
+networks:
+  web:
+    external: true
