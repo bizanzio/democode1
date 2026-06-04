@@ -75,8 +75,6 @@ pipeline {
         stage('2 · Construir imagen Docker') {
             steps {
                 script {
-                    // Jenkins ya tiene el código clonado en el workspace.
-                    // Lo comprimimos y se lo mandamos directamente al Docker del swarm.
                     sh """
                         tar -czf /tmp/build-context.tar.gz \
                             --exclude='.git' \
@@ -84,20 +82,17 @@ pipeline {
                             -C ${WORKSPACE} .
                     """
         
-                    def buildUrl = "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/build" +
-                                   "?t=${params.IMAGE_NAME}&nocache=1"
+                    def buildUrl = "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/build?t=${params.IMAGE_NAME}&nocache=1"
         
-                    httpRequest(
-                        httpMode:               'POST',
-                        ignoreSslErrors:        true,
-                        url:                    buildUrl,
-                        customHeaders:          [[name: 'Authorization',value: env.JWT],
-                                                 [name: 'Content-Type', value: 'application/x-tar']],
-                        uploadFile:             '/tmp/build-context.tar.gz',
-                        validResponseCodes:     '200:299',
-                        consoleLogResponseBody: true,
-                        timeout:                600
-                    )
+                    sh """
+                        curl -sf -X POST \
+                          -H 'Content-Type: application/x-tar' \
+                          -H 'Authorization: ${env.JWT}' \
+                          --data-binary @/tmp/build-context.tar.gz \
+                          --insecure \
+                          '${buildUrl}'
+                    """
+                    echo "Imagen ${params.IMAGE_NAME} construida correctamente"
                 }
             }
         }
