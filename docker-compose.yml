@@ -29,5 +29,5 @@ services:
         - "traefik.docker.network=web"
 
 networks:
-  web:
+  public:
     external: true
