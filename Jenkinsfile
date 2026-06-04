@@ -1,11 +1,9 @@
 pipeline {
     agent any
 
-    // ── Parámetros configurables en el job ─────────────────────────────────
-    // Estos valores son los defaults; se cambian una vez al crear el job.
     parameters {
         string(name: 'PORTAINER_URL',
-               defaultValue: 'https://devportainer.viladomat.com/',
+               defaultValue: 'https://devportainer.viladomat.com',
                description: 'URL base de Portainer, sin barra al final')
 
         string(name: 'PORTAINER_ENDPOINT_ID',
@@ -37,17 +35,13 @@ pipeline {
                description: 'Nombre de la base de datos')
     }
 
-    // ── Las credenciales sensibles viven en Jenkins, NO en parámetros ───────
-    // Configurar en: Jenkins → Manage Jenkins → Credentials
-    //   • ID: portainer-admin  →  usuario y contraseña de Portainer admin
-    //   • ID: bizanzio-gh-pat         →  usuario y contraseña de la base de datos
+    // Credenciales en Jenkins → Manage Jenkins → Credentials:
+    //   • ID: portainer-admin   → usuario y contraseña de Portainer
+    //   • ID: demoapp-dbcreds   → usuario y contraseña de la base de datos
 
     stages {
 
-        // ────────────────────────────────────────────────────────────────────
         stage('1 · Token Portainer') {
-        // Obtiene el JWT para autenticar el resto de llamadas a la API
-        // ────────────────────────────────────────────────────────────────────
             steps {
                 withCredentials([usernamePassword(
                     credentialsId: 'portainer-admin',
@@ -71,7 +65,6 @@ pipeline {
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         stage('2 · Construir imagen Docker') {
             steps {
                 script {
@@ -81,9 +74,9 @@ pipeline {
                             --exclude='node_modules' \
                             -C ${WORKSPACE} .
                     """
-        
+
                     def buildUrl = "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/build?t=${params.IMAGE_NAME}&nocache=1"
-        
+
                     sh """
                         curl -sf -X POST \
                           -H 'Content-Type: application/x-tar' \
@@ -96,14 +89,11 @@ pipeline {
                 }
             }
         }
-        // ────────────────────────────────────────────────────────────────────
+
         stage('3 · Eliminar stack anterior') {
-        // Portainer no soporta "redeploy" limpio via API, así que borramos
-        // el stack existente (si hay) antes de crear el nuevo.
-        // ────────────────────────────────────────────────────────────────────
             steps {
                 script {
-                    def resp   = httpRequest(
+                    def resp = httpRequest(
                         httpMode:           'GET',
                         ignoreSslErrors:    true,
                         url:                "${params.PORTAINER_URL}/api/stacks",
@@ -131,19 +121,14 @@ pipeline {
             }
         }
 
-        // ────────────────────────────────────────────────────────────────────
         stage('4 · Desplegar stack') {
-        // Portainer clona el repo, lee el docker-compose.yml e inyecta las
-        // variables de entorno que le pasamos aquí.
-        // ────────────────────────────────────────────────────────────────────
             steps {
                 withCredentials([usernamePassword(
-                    credentialsId: 'bizanzio-gh-pat',
+                    credentialsId: 'demoapp-dbcreds',
                     usernameVariable: 'DB_USER',
                     passwordVariable: 'DB_PASS'
                 )]) {
                     script {
-                        // Obtenemos el ID del Swarm (necesario para la llamada)
                         def swarmResp = httpRequest(
                             httpMode:           'GET',
                             ignoreSslErrors:    true,
@@ -154,7 +139,6 @@ pipeline {
                         def swarmId = new groovy.json.JsonSlurper().parseText(swarmResp.content).ID
                         echo "Swarm ID: ${swarmId}"
 
-                        // Body de la petición de deploy
                         def body = """
                         {
                           "Name": "${params.STACK_NAME}",
@@ -175,14 +159,14 @@ pipeline {
 
                         echo "Desplegando stack '${params.STACK_NAME}'..."
                         httpRequest(
-                            acceptType:         'APPLICATION_JSON',
-                            contentType:        'APPLICATION_JSON',
-                            httpMode:           'POST',
-                            ignoreSslErrors:    true,
-                            url:                "${params.PORTAINER_URL}/api/stacks?type=1&method=repository&endpointId=${params.PORTAINER_ENDPOINT_ID}",
-                            customHeaders:      [[name: 'Authorization', value: env.JWT]],
-                            requestBody:        body,
-                            validResponseCodes: '200:201',
+                            acceptType:             'APPLICATION_JSON',
+                            contentType:            'APPLICATION_JSON',
+                            httpMode:               'POST',
+                            ignoreSslErrors:        true,
+                            url:                    "${params.PORTAINER_URL}/api/stacks/create/swarm/repository?endpointId=${params.PORTAINER_ENDPOINT_ID}",
+                            customHeaders:          [[name: 'Authorization', value: env.JWT]],
+                            requestBody:            body,
+                            validResponseCodes:     '200:201',
                             consoleLogResponseBody: true
                         )
                     }
@@ -193,7 +177,7 @@ pipeline {
 
     post {
         success {
-            echo "✅ Deploy completado correctamente → https://${params.APP_HOSTNAME}"
+            echo "✅ Deploy completado → https://${params.APP_HOSTNAME}"
         }
         failure {
             echo "❌ El pipeline ha fallado. Revisa los logs arriba."
