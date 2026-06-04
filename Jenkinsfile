@@ -23,8 +23,8 @@ pipeline {
                description: 'Nombre:tag de la imagen Docker a construir')
 
         string(name: 'APP_HOSTNAME',
-               defaultValue: 'demoapp1',
-               description: 'Hostname que Traefik usará para servir la app')
+               defaultValue: 'demoapp1.viladomat.com',
+               description: 'Hostname que Traefik usará para servir la app (FQDN completo)')
 
         string(name: 'DB_HOST',
                defaultValue: '10.42.81.5',
@@ -100,15 +100,24 @@ pipeline {
                         customHeaders:      [[name: 'Authorization', value: env.JWT]],
                         validResponseCodes: '200'
                     )
-                    def stacks   = new groovy.json.JsonSlurper().parseText(resp.content)
-                    def existing = stacks?.find { it.Name == params.STACK_NAME }
 
-                    if (existing) {
-                        echo "Stack '${params.STACK_NAME}' encontrado (ID: ${existing.Id}). Eliminando..."
+                    // Extraemos el ID como String primitivo ANTES del if
+                    // para que sleep() no intente serializar el LazyMap de Groovy
+                    def stacks  = new groovy.json.JsonSlurper().parseText(resp.content)
+                    def stackId = null
+                    for (def stack : stacks) {
+                        if (stack.Name == params.STACK_NAME) {
+                            stackId = stack.Id.toString()
+                            break
+                        }
+                    }
+
+                    if (stackId) {
+                        echo "Stack '${params.STACK_NAME}' encontrado (ID: ${stackId}). Eliminando..."
                         httpRequest(
                             httpMode:           'DELETE',
                             ignoreSslErrors:    true,
-                            url:                "${params.PORTAINER_URL}/api/stacks/${existing.Id}?endpointId=${params.PORTAINER_ENDPOINT_ID}",
+                            url:                "${params.PORTAINER_URL}/api/stacks/${stackId}?endpointId=${params.PORTAINER_ENDPOINT_ID}",
                             customHeaders:      [[name: 'Authorization', value: env.JWT]],
                             validResponseCodes: '200:204'
                         )
@@ -136,11 +145,10 @@ pipeline {
                             customHeaders:      [[name: 'Authorization', value: env.JWT]],
                             validResponseCodes: '200'
                         )
-                        def swarmId = new groovy.json.JsonSlurper().parseText(swarmResp.content).ID
+                        // .toString() evita que swarmId sea un LazyMap no serializable
+                        def swarmId = new groovy.json.JsonSlurper().parseText(swarmResp.content).ID.toString()
                         echo "Swarm ID: ${swarmId}"
 
-                        // Leemos el docker-compose.yml del workspace (ya clonado por Jenkins)
-                        // y escapamos las comillas para meterlo en el JSON
                         def composeContent = readFile('docker-compose.yml')
                                                 .replace('\\', '\\\\')
                                                 .replace('"', '\\"')
