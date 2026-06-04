@@ -73,34 +73,34 @@ pipeline {
 
         // ────────────────────────────────────────────────────────────────────
         stage('2 · Construir imagen Docker') {
-        // Docker (en el nodo Swarm) descarga el código desde GitHub y construye
-        // la imagen. No requiere Docker instalado en el agente Jenkins.
-        // ────────────────────────────────────────────────────────────────────
             steps {
                 script {
-                    // El # de la rama debe ir codificado como %23 en la URL
-                    def remoteUrl = "${params.REPO_URL}.git%23main"
-                    def buildUrl  = "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/build" +
-                                    "?t=${params.IMAGE_NAME}" +
-                                    "&remote=${remoteUrl}" +
-                                    "&dockerfile=Dockerfile" +
-                                    "&nocache=1"
-
-                    echo "Construyendo imagen ${params.IMAGE_NAME} desde ${params.REPO_URL}..."
+                    // Jenkins ya tiene el código clonado en el workspace.
+                    // Lo comprimimos y se lo mandamos directamente al Docker del swarm.
+                    sh """
+                        tar -czf /tmp/build-context.tar.gz \
+                            --exclude='.git' \
+                            --exclude='node_modules' \
+                            -C ${WORKSPACE} .
+                    """
+        
+                    def buildUrl = "${params.PORTAINER_URL}/api/endpoints/${params.PORTAINER_ENDPOINT_ID}/docker/build" +
+                                   "?t=${params.IMAGE_NAME}&nocache=1"
+        
                     httpRequest(
                         httpMode:               'POST',
                         ignoreSslErrors:        true,
                         url:                    buildUrl,
-                        customHeaders:          [[name: 'Authorization', value: env.JWT]],
+                        customHeaders:          [[name: 'Authorization',value: env.JWT],
+                                                 [name: 'Content-Type', value: 'application/x-tar']],
+                        uploadFile:             '/tmp/build-context.tar.gz',
                         validResponseCodes:     '200:299',
                         consoleLogResponseBody: true,
-                        timeout:                600   // 10 min por si la build tarda
+                        timeout:                600
                     )
-                    echo "Imagen construida correctamente"
                 }
             }
         }
-
         // ────────────────────────────────────────────────────────────────────
         stage('3 · Eliminar stack anterior') {
         // Portainer no soporta "redeploy" limpio via API, así que borramos
